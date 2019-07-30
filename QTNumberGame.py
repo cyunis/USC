@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+#!/usr/local/bin/python
 #!/usr/bin/env python
 # encoding=utf8
 
@@ -11,12 +13,14 @@ import string
 from std_msgs.msg import String
 from qt_robot_interface.srv import *
 from qt_gesture_controller.srv import *
+from std_msgs.msg import String #for orthosis
 from std_msgs.msg import Float64MultiArray
 from sensor_msgs.msg import JointState
 from thumb.msg import Res
 #include IMU, button, orthosis
 import rosbag
 from heapq import nlargest
+
 #gesture choose
 def choose_behaviors(number):
     global right_pub, left_pub, head_pub, emotionShow_pub, gesturePlay_pub, speechSay_pub, audioPlay_pub
@@ -247,13 +251,14 @@ def dictionary_set():
     return guess_dict,second_dict,encourage_dict,clarify_dict,reward_dict
 
 
-def feedback_function(thumb_angle, time,name):
+def feedback_function(thumb_angle, time, name):
+    #Character: QT is supportive, fun and playful (teenager) - likes to play video games
     global speechSay_pub, encourage_dict, reward_dict
     #give each item weights and combine weights to make a %
     #want reward to be 80-50% and encourage >80% always
-    #camera angle, GAS (fatigue), history of gestures, # of prompts
+    #wrist angle, GAS (fatigue), history of gestures, # of prompts
     
-    #camera angles should be matched to buckets on the GAS - need to see lit if standard #s for this (10% is 1, 20% is 2)
+    #wrist angles should be matched to buckets on the GAS - need to see lit if standard #s for this (10% is 1, 20% is 2)
         #these should be the most important factors to weight
     
     #increase the encouragement when GAS, camera angle is worse and increase more if history shows a pattern of worsening
@@ -263,7 +268,13 @@ def feedback_function(thumb_angle, time,name):
     #if a lot of clarification is needed, and bad history of gestures, more encouragement and more reward for lower GAS
     
     #if history of gestures is bad but shows one good case give a reward
-
+    
+    #history categories: 1)90% good and then 10% bad(sudden dip) 2)equal mixture of good or bad 3)no improvement 4)getting worse 5)getting better 6)90% bad then good
+    #1, 3, 4 - more encouragement. 2 - varied encouragement (maybe getting bored?). 5, 6 - more reward + encouragement.
+    #1, 6 - high weights.
+    #prompt categories: 1)a lot of clarification 2)a little clarification 3)less encouragement than normal 4)a lot of reward 5)a little reward
+    #1 - more encouragement (maybe tired?). 2 - more reward. 3 - varied encouragement.
+    
     #50 degrees is the threshold, determined by GAS
     if abs(thumb_angle) < 50:
         encourage_prob = 0.85 -abs(thumb_angle/100.0) + time/300.0 #smaller angle, worse performance/ longer time, more tired, more enc
@@ -342,7 +353,36 @@ def record_data():
     #button data just rosbag button data
     pass
 
+#for orthosis 
+frame = 0 #necessary? 2, 1, 0, -1
+state = 0
+button = 0
+statelist = []
+buttonlist = []
 
+def callback(data):
+    strdata = str(data)
+
+    # hacky split
+    val = strdata.split(':')
+    val = val[1].split('\\t');
+    temp = val[0].split('"');
+    
+    global frame, state, buttons, statelist, buttonlist
+    
+    frame = int(temp[1])
+    state = int(val[1])
+    button = int(val[2])
+    statelist.append(state)
+    buttonlist.append(button)
+    #print(frame, state, buttons)
+    
+def listener(): #call listener to read the data and check if the value is in the state or button list
+    statelist.clear()
+    buttonlist.clear()
+    rospy.init_node('listener', anonymous=True)
+    rospy.Subscriber('openwearable', String, callback)
+    rospy.sleep(3) #change sleep value to be amount of time to answer (5 sec?)
 
 
 if __name__=="__main__":
@@ -492,7 +532,6 @@ if __name__=="__main__":
                                 feedback_function(the_angle,time.time()-start_time,name)
                                 # random_encourage = random.randrange(1,len(encourage_dict))
                                 # speechSay_pub.publish(encourage_dict[random_encourage].format(name))
-                                # ^ this line would be replaced by camera or IMU input, worst case experimenter prompts
                                     # use # number = sys.stdin.readline() if prompt
                                 # if val2 == 1:
                                 res, the_angle = isThumbUp_Down()
